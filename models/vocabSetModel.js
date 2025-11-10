@@ -7,6 +7,10 @@ const vocabItemSchema = mongoose.Schema({
     meaning: { type: String, required: true },
     exampleSentence: { type: String },
     needsReview: { type: Boolean, default: false },
+    // --- SRS Fields ---
+    srsLevel: { type: Number, default: 0 }, // 0=new, higher=more learned
+    nextReviewDate: { type: Date, default: () => new Date(), index: true },
+    interval: { type: Number, default: 0 }, // in days
 });
 
 const vocabSetSchema = mongoose.Schema(
@@ -15,7 +19,7 @@ const vocabSetSchema = mongoose.Schema(
             type: mongoose.Schema.Types.ObjectId,
             required: true,
             ref: 'User',
-            index: true, // Performance optimization: Index this field for faster queries
+            index: true,
         },
         title: {
             type: String,
@@ -31,6 +35,22 @@ const vocabSetSchema = mongoose.Schema(
             default: 'Medium',
         },
         items: [vocabItemSchema],
+        // --- Community Fields ---
+        isPublic: {
+            type: Boolean,
+            default: false,
+            index: true,
+        },
+        creatorName: { type: String },
+        cloneCount: {
+            type: Number,
+            default: 0,
+        },
+        publishedAt: { type: Date },
+        originalSetId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: 'VocabSet',
+        }
     },
     {
         timestamps: true,

@@ -5,10 +5,22 @@ const {
     createSet,
     updateSet,
     deleteSet,
+    getPublicSets,
+    getPublicSetDetails,
+    cloneSet,
 } = require('../controllers/setController');
 const { protect } = require('../middleware/authMiddleware');
 
-router.route('/').get(protect, getSets).post(protect, createSet);
-router.route('/:id').put(protect, updateSet).delete(protect, deleteSet);
+// All routes are protected
+router.use(protect);
+
+// Community routes
+router.route('/community').get(getPublicSets);
+router.route('/community/:id').get(getPublicSetDetails);
+router.route('/clone/:id').post(cloneSet);
+
+// User's private set routes
+router.route('/').get(getSets).post(createSet);
+router.route('/:id').put(updateSet).delete(deleteSet);
 
 module.exports = router;
