@@ -6,6 +6,7 @@ const vocabItemSchema = mongoose.Schema({
     pinyin: { type: String, required: true },
     meaning: { type: String, required: true },
     exampleSentence: { type: String },
+    needsReview: { type: Boolean, default: false },
 });
 
 const vocabSetSchema = mongoose.Schema(
@@ -22,6 +23,12 @@ const vocabSetSchema = mongoose.Schema(
         },
         description: {
             type: String,
+        },
+        difficulty: {
+            type: String,
+            required: true,
+            enum: ['Easy', 'Medium', 'Hard'],
+            default: 'Medium',
         },
         items: [vocabItemSchema],
     },

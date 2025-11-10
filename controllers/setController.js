@@ -32,7 +32,7 @@ const getSets = async (req, res) => {
 // @route   POST /api/sets
 // @access  Private
 const createSet = async (req, res) => {
-    const { title, description, items } = req.body;
+    const { title, description, items, difficulty } = req.body;
 
     if (!title) {
         return res.status(400).json({ message: 'Title is required' });
@@ -42,6 +42,7 @@ const createSet = async (req, res) => {
         title,
         description,
         items,
+        difficulty,
         user: req.user._id,
     });
 
@@ -57,7 +58,7 @@ const createSet = async (req, res) => {
 // @route   PUT /api/sets/:id
 // @access  Private
 const updateSet = async (req, res) => {
-    const { title, description, items } = req.body;
+    const { title, description, items, difficulty } = req.body;
 
     const set = await VocabSet.findById(req.params.id);
 
@@ -69,6 +70,7 @@ const updateSet = async (req, res) => {
         set.title = title || set.title;
         set.description = description || set.description;
         set.items = items || set.items;
+        set.difficulty = difficulty || set.difficulty;
 
         const updatedSet = await set.save();
 

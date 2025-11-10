@@ -6,6 +6,7 @@ const connectDB = require('./config/db');
 // Import routes
 const userRoutes = require('./routes/userRoutes');
 const setRoutes = require('./routes/setRoutes');
+const quizHistoryRoutes = require('./routes/quizHistoryRoutes'); // Import new routes
 
 // Load env vars
 dotenv.config();
@@ -28,8 +29,11 @@ app.use(cors({
 // Mount routers
 app.use('/api/users', userRoutes);
 app.use('/api/sets', setRoutes);
-
+app.use('/api/history', quizHistoryRoutes); // Mount new routes
 
 const PORT = process.env.PORT || 5001;
 
 app.listen(PORT, console.log(`Server running on port ${PORT}`));
+
+
+
