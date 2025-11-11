@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
     getSets,
+    getSetById,
     createSet,
     updateSet,
     deleteSet,
@@ -21,6 +22,6 @@ router.route('/clone/:id').post(cloneSet);
 
 // User's private set routes
 router.route('/').get(getSets).post(createSet);
-router.route('/:id').put(updateSet).delete(deleteSet);
+router.route('/:id').get(getSetById).put(updateSet).delete(deleteSet);
 
 module.exports = router;

@@ -1,3 +1,4 @@
+
 const QuizHistory = require('../models/quizHistoryModel');
 const VocabSet = require('../models/vocabSetModel');
 const User = require('../models/userModel');
@@ -54,7 +55,6 @@ const saveQuizResult = async (req, res) => {
         });
 
         await set.save();
-        myCache.del(`sets_${req.user._id.toString()}`); // Invalidate cache
 
         // --- 3. Update User Gamification Stats ---
         const user = await User.findById(req.user._id);
@@ -81,6 +81,8 @@ const saveQuizResult = async (req, res) => {
             if (user.currentStreak > user.longestStreak) {
                 user.longestStreak = user.currentStreak;
             }
+            
+            myCache.del(`user_stats_${req.user._id}`); // Invalidate stats cache
             await user.save();
         }
 
@@ -113,7 +115,92 @@ const getQuizHistory = async (req, res) => {
     res.json(history);
 };
 
+
+// @desc    Get aggregated user stats (mastery, reviews)
+// @route   GET /api/history/stats
+// @access  Private
+const getUserStats = async (req, res) => {
+    const userId = req.user._id;
+    const cacheKey = `user_stats_${userId}`;
+
+    if (myCache.has(cacheKey)) {
+        return res.json(myCache.get(cacheKey));
+    }
+
+    try {
+        const sets = await VocabSet.find({ user: userId }).select('items title');
+
+        const stats = {
+            mastery: { new: 0, learning: 0, known: 0, mastered: 0, total: 0 },
+            reviewForecast: [], // Array for 7 days
+            setsForReview: [], // For today's review modal
+        };
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const dueItemsBySet = {};
+
+        // Initialize 7-day forecast
+        for (let i = 0; i < 7; i++) {
+            const date = new Date(today);
+            date.setDate(today.getDate() + i);
+            stats.reviewForecast.push({
+                date: date.toISOString().split('T')[0],
+                count: 0,
+            });
+        }
+        
+        sets.forEach(set => {
+            set.items.forEach(item => {
+                stats.mastery.total++;
+                const srsLevel = item.srsLevel || 0;
+                if (srsLevel === 0) stats.mastery.new++;
+                else if (srsLevel <= 2) stats.mastery.learning++;
+                else if (srsLevel <= 5) stats.mastery.known++;
+                else stats.mastery.mastered++;
+
+                if (item.nextReviewDate) {
+                    const reviewDate = new Date(item.nextReviewDate);
+                    reviewDate.setHours(0, 0, 0, 0);
+
+                    // Check for today's review
+                    if (reviewDate <= today) {
+                        if (!dueItemsBySet[set._id]) {
+                            dueItemsBySet[set._id] = { setTitle: set.title, dueCount: 0 };
+                        }
+                        dueItemsBySet[set._id].dueCount++;
+                    }
+
+                    // Check for 7-day forecast
+                    const diffTime = reviewDate.getTime() - today.getTime();
+                    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+                    
+                    if (diffDays >= 0 && diffDays < 7) {
+                        stats.reviewForecast[diffDays].count++;
+                    }
+                }
+            });
+        });
+
+        stats.setsForReview = Object.entries(dueItemsBySet).map(([setId, data]) => ({
+            setId,
+            setTitle: data.setTitle,
+            dueCount: data.dueCount,
+        }));
+        
+        myCache.set(cacheKey, stats);
+        res.json(stats);
+
+    } catch (error) {
+        console.error('Error fetching user stats:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+
 module.exports = {
     saveQuizResult,
     getQuizHistory,
+    getUserStats,
 };

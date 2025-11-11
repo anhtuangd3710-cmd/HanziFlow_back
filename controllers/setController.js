@@ -1,3 +1,4 @@
+
 const VocabSet = require('../models/vocabSetModel');
 const User = require('../models/userModel');
 const mongoose = require('mongoose');
@@ -7,22 +8,54 @@ const NodeCache = require('node-cache');
 const myCache = new NodeCache({ stdTTL: 600 });
 
 
-// @desc    Get user's vocab sets
+// @desc    Get user's vocab sets with pagination
 // @route   GET /api/sets
 // @access  Private
 const getSets = async (req, res) => {
-    const userId = req.user._id.toString();
-    const cacheKey = `sets_${userId}`;
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 6; // Default to 6 sets per page
+    const startIndex = (page - 1) * limit;
 
-    if (myCache.has(cacheKey)) {
-        return res.json(myCache.get(cacheKey));
+    try {
+        const total = await VocabSet.countDocuments({ user: req.user._id });
+        const sets = await VocabSet.find({ user: req.user._id })
+            .sort({ createdAt: -1 })
+            .skip(startIndex)
+            .limit(limit);
+
+        res.json({
+            sets,
+            page,
+            pages: Math.ceil(total / limit),
+            total,
+        });
+    } catch (error) {
+        console.error('Error fetching sets:', error);
+        res.status(500).json({ message: 'Server Error' });
     }
+};
 
-    const sets = await VocabSet.find({ user: req.user._id });
-    
-    myCache.set(cacheKey, sets);
+// @desc    Get a single vocab set by its ID
+// @route   GET /api/sets/:id
+// @access  Private
+const getSetById = async (req, res) => {
+    try {
+        const set = await VocabSet.findById(req.params.id);
 
-    res.json(sets);
+        if (!set) {
+            return res.status(404).json({ message: 'Set not found' });
+        }
+
+        // Ensure the user owns the set they are trying to access
+        if (set.user.toString() !== req.user._id.toString()) {
+            return res.status(401).json({ message: 'Not authorized to access this set' });
+        }
+
+        res.json(set);
+    } catch (error) {
+        console.error('Error fetching set by ID:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
 };
 
 // @desc    Create a new vocab set
@@ -51,11 +84,6 @@ const createSet = async (req, res) => {
 
     const createdSet = await set.save();
     
-    myCache.del(`sets_${req.user._id.toString()}`);
-    if (isPublic) {
-        myCache.del('public_sets');
-    }
-
     res.status(201).json(createdSet);
 };
 
@@ -88,9 +116,6 @@ const updateSet = async (req, res) => {
 
         const updatedSet = await set.save();
         
-        myCache.del(`sets_${req.user._id.toString()}`);
-        myCache.del('public_sets'); // Invalidate public cache on any update
-
         res.json(updatedSet);
     } else {
         res.status(404).json({ message: 'Set not found' });
@@ -110,12 +135,7 @@ const deleteSet = async (req, res) => {
         
         await set.deleteOne();
         
-        myCache.del(`sets_${req.user._id.toString()}`);
-        if(set.isPublic) {
-            myCache.del('public_sets');
-        }
-
-        res.json({ message: 'Set removed' });
+        res.status(204).send(); // Send 204 No Content for successful deletion
     } else {
         res.status(404).json({ message: 'Set not found' });
     }
@@ -124,23 +144,47 @@ const deleteSet = async (req, res) => {
 
 // --- COMMUNITY ROUTES ---
 
-// @desc    Get all public vocab sets
+// @desc    Get all public vocab sets with search and pagination
 // @route   GET /api/sets/community
 // @access  Private
 const getPublicSets = async (req, res) => {
-    if (myCache.has('public_sets')) {
-        return res.json(myCache.get('public_sets'));
+    const page = parseInt(req.query.page, 10) || 1;
+    const limit = parseInt(req.query.limit, 10) || 9; // Default to 9 for a 3-col layout
+    const searchTerm = req.query.search || '';
+    const startIndex = (page - 1) * limit;
+    
+    const query = {
+        isPublic: true,
+        user: { $ne: req.user._id } // Exclude user's own sets
+    };
+
+    if (searchTerm) {
+        const regex = new RegExp(searchTerm, 'i'); // 'i' for case-insensitive
+        query.$or = [
+            { title: regex },
+            { description: regex },
+            { creatorName: regex },
+        ];
     }
+    
+    try {
+        const total = await VocabSet.countDocuments(query);
+        const sets = await VocabSet.find(query)
+            .sort({ cloneCount: -1, publishedAt: -1 })
+            .skip(startIndex)
+            .limit(limit);
 
-    const sets = await VocabSet.find({ 
-            isPublic: true, 
-            user: { $ne: req.user._id } // Exclude user's own sets
-        })
-        .sort({ cloneCount: -1, publishedAt: -1 })
-        .limit(100); // Limit to 100 sets for now
+        res.json({
+            sets,
+            page,
+            pages: Math.ceil(total / limit),
+            total,
+        });
 
-    myCache.set('public_sets', sets);
-    res.json(sets);
+    } catch (error) {
+        console.error('Error fetching public sets:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
 };
 
 
@@ -204,10 +248,6 @@ const cloneSet = async (req, res) => {
     user.clonedSets.push(publicSet._id);
     await user.save();
     
-    // Invalidate caches
-    myCache.del(`sets_${req.user._id.toString()}`);
-    myCache.del('public_sets');
-
     const updatedUser = { clonedSets: user.clonedSets };
 
     res.status(201).json({ newSet: savedNewSet, updatedUser });
@@ -216,6 +256,7 @@ const cloneSet = async (req, res) => {
 
 module.exports = {
     getSets,
+    getSetById,
     createSet,
     updateSet,
     deleteSet,
