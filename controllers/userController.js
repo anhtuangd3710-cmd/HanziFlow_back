@@ -22,7 +22,7 @@ const registerUser = async (req, res) => {
         const user = await User.create({ name, email, password });
         if (user) {
             res.status(201).json({
-                _id: user._id, name: user.name, email: user.email,
+                _id: user._id, name: user.name, email: user.email, role: user.role,
                 xp: user.xp, currentStreak: user.currentStreak, longestStreak: user.longestStreak,
                 createdAt: user.createdAt, clonedSets: user.clonedSets, token: generateToken(user._id),
             });
@@ -48,7 +48,7 @@ const loginUser = async (req, res) => {
         const user = await User.findOne({ email });
         if (user && (await user.matchPassword(password))) {
             res.json({
-                 _id: user._id, name: user.name, email: user.email,
+                 _id: user._id, name: user.name, email: user.email, role: user.role,
                  xp: user.xp, currentStreak: user.currentStreak, longestStreak: user.longestStreak,
                  lastStudiedDate: user.lastStudiedDate, createdAt: user.createdAt, clonedSets: user.clonedSets,
                  token: generateToken(user._id),
@@ -70,7 +70,7 @@ const getUserProfile = async (req, res) => {
         const user = await User.findById(req.user._id);
         if (user) {
             res.json({
-                _id: user._id, name: user.name, email: user.email,
+                _id: user._id, name: user.name, email: user.email, role: user.role,
                 xp: user.xp, currentStreak: user.currentStreak, longestStreak: user.longestStreak,
                 lastStudiedDate: user.lastStudiedDate, createdAt: user.createdAt, clonedSets: user.clonedSets,
             });
@@ -95,7 +95,7 @@ const updateUserProfile = async (req, res) => {
             const updatedUser = await user.save();
             
             res.json({
-                 _id: updatedUser._id, name: updatedUser.name, email: updatedUser.email,
+                 _id: updatedUser._id, name: updatedUser.name, email: updatedUser.email, role: updatedUser.role,
                  xp: updatedUser.xp, currentStreak: updatedUser.currentStreak, longestStreak: updatedUser.longestStreak,
                  lastStudiedDate: updatedUser.lastStudiedDate, createdAt: updatedUser.createdAt, clonedSets: updatedUser.clonedSets,
                  token: generateToken(updatedUser._id),
