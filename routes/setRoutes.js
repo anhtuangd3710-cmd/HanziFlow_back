@@ -1,3 +1,4 @@
+
 const express = require('express');
 const router = express.Router();
 const {
@@ -12,7 +13,7 @@ const {
 } = require('../controllers/setController');
 const { protect } = require('../middleware/authMiddleware');
 
-// All routes are protected
+// All routes in this file are protected
 router.use(protect);
 
 // Community routes

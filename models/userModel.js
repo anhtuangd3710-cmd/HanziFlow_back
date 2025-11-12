@@ -1,10 +1,12 @@
+
 const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+const argon2 = require('argon2');
 
 const userSchema = mongoose.Schema({
-    name: { type: String, required: true },
+    name: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
+    refreshTokens: [String],
     // Gamification fields
     xp: { type: Number, default: 0 },
     currentStreak: { type: Number, default: 0 },
@@ -22,15 +24,19 @@ const userSchema = mongoose.Schema({
 // Password hashing middleware
 userSchema.pre('save', async function(next) {
     if (!this.isModified('password')) {
-        next();
+        return next();
     }
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
+    try {
+        this.password = await argon2.hash(this.password);
+        next();
+    } catch (err) {
+        next(err);
+    }
 });
 
 // Method to compare passwords
 userSchema.methods.matchPassword = async function(enteredPassword) {
-    return await bcrypt.compare(enteredPassword, this.password);
+    return await argon2.verify(this.password, enteredPassword);
 };
 
 const User = mongoose.model('User', userSchema);

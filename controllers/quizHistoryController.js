@@ -107,11 +107,17 @@ const saveQuizResult = async (req, res) => {
 // @route   GET /api/history
 // @access  Private
 const getQuizHistory = async (req, res) => {
-    const history = await QuizHistory.find({ user: req.user._id })
-        .populate('vocabSet', 'title')
-        .sort({ createdAt: -1 })
-        .limit(20);
+    const limit = req.query.limit ? parseInt(req.query.limit, 10) : 0; // 0 means no limit
 
+    let query = QuizHistory.find({ user: req.user._id })
+        .populate('vocabSet', 'title')
+        .sort({ createdAt: -1 });
+    
+    if (limit > 0) {
+        query = query.limit(limit);
+    }
+
+    const history = await query;
     res.json(history);
 };
 
