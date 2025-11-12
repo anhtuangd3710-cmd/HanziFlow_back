@@ -9,9 +9,7 @@ const {
 const { protect } = require('../middleware/authMiddleware');
 
 // All routes are protected and require a valid token
-router.use(protect);
-
-router.route('/').get(getQuizHistory).post(saveQuizResult);
-router.route('/stats').get(getUserStats);
+router.route('/').get(protect, getQuizHistory).post(protect, saveQuizResult);
+router.route('/stats').get(protect, getUserStats);
 
 module.exports = router;
