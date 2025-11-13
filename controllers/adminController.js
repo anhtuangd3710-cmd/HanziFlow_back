@@ -26,6 +26,7 @@ const getAllUsers = async (req, res) => {
 
     try {
         const total = await User.countDocuments();
+        const totalPages = Math.ceil(total / limit);
         const users = await User.find({})
             .sort({ createdAt: -1 })
             .select('-password -__v')
@@ -34,8 +35,10 @@ const getAllUsers = async (req, res) => {
         
         res.json({
             users,
-            page,
-            pages: Math.ceil(total / limit),
+            currentPage: page,
+            totalPages: totalPages,
+            total: total,
+            limit: limit,
         });
     } catch (error) {
         res.status(500).json({ message: 'Server Error' });
