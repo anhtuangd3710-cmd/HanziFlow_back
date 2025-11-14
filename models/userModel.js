@@ -5,12 +5,21 @@ const bcrypt = require('bcryptjs');
 const userSchema = mongoose.Schema({
     name: { type: String, required: true, unique: true },
     email: { type: String, required: true, unique: true },
-    password: { type: String, required: true },
+    password: { type: String },
     role: {
         type: String,
         enum: ['user', 'admin'],
         default: 'user'
     },
+    // Email verification
+    isEmailVerified: { type: Boolean, default: false },
+    emailVerificationToken: { type: String, default: null },
+    emailVerificationExpire: { type: Date, default: null },
+    // Password reset fields
+    resetPasswordToken: { type: String, default: null },
+    resetPasswordExpire: { type: Date, default: null },
+    // OAuth fields
+    googleId: { type: String, default: null },
     // Gamification fields
     xp: { type: Number, default: 0 },
     currentStreak: { type: Number, default: 0 },
@@ -21,6 +30,11 @@ const userSchema = mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'VocabSet',
     }],
+    // Account status fields
+    isBlocked: { type: Boolean, default: false },
+    blockReason: { type: String, default: null },
+    blockedAt: { type: Date, default: null },
+    blockedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
 }, {
     timestamps: true,
 });

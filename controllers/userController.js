@@ -1,6 +1,8 @@
 
 const User = require('../models/userModel');
 const generateToken = require('../utils/generateToken');
+const crypto = require('crypto');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../utils/emailService');
 
 // @desc    Register a new user
 // @route   POST /api/users/register
@@ -8,6 +10,10 @@ const generateToken = require('../utils/generateToken');
 const registerUser = async (req, res) => {
     try {
         const { name, email, password } = req.body;
+
+        if (!name || !email || !password) {
+            return res.status(400).json({ message: 'Please provide all required fields' });
+        }
 
         const emailExists = await User.findOne({ email });
         if (emailExists) {
@@ -19,19 +25,41 @@ const registerUser = async (req, res) => {
             return res.status(400).json({ message: 'Username is already taken' });
         }
 
-        const user = await User.create({ name, email, password });
+        // Generate email verification token (20 chars hex)
+        const emailToken = crypto.randomBytes(10).toString('hex');
+        const emailTokenHash = crypto.createHash('sha256').update(emailToken).digest('hex');
+
+        const user = await User.create({
+            name,
+            email,
+            password,
+            emailVerificationToken: emailTokenHash,
+            emailVerificationExpire: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+            isEmailVerified: false,
+        });
+
         if (user) {
+            const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${emailToken}&email=${email}`;
+
+            // Send verification email
+            try {
+                await sendVerificationEmail(email, verificationLink);
+            } catch (emailError) {
+                console.error('Email sending failed:', emailError);
+                // Still allow registration even if email fails
+            }
+
             res.status(201).json({
-                _id: user._id, name: user.name, email: user.email, role: user.role,
-                xp: user.xp, currentStreak: user.currentStreak, longestStreak: user.longestStreak,
-                createdAt: user.createdAt, clonedSets: user.clonedSets, token: generateToken(user._id),
+                message: 'Account created! Please check your email to verify your account.',
+                email: user.email,
+                // For testing in development - remove in production
+                verificationLink: process.env.NODE_ENV === 'development' ? verificationLink : undefined,
             });
         } else {
             res.status(400).json({ message: 'Invalid user data' });
         }
     } catch(error) {
         console.error('Registration Error:', error);
-        // Handle potential race condition for unique fields
         if (error.code === 11000) {
              return res.status(400).json({ message: 'Email or Username already exists.' });
         }
@@ -46,7 +74,15 @@ const loginUser = async (req, res) => {
     try {
         const { email, password } = req.body;
         const user = await User.findOne({ email });
+        
         if (user && (await user.matchPassword(password))) {
+            // Check if user is blocked
+            if (user.isBlocked) {
+                return res.status(403).json({ 
+                    message: `Your account has been disabled: ${user.blockReason || 'Community policy violation'}`
+                });
+            }
+
             res.json({
                  _id: user._id, name: user.name, email: user.email, role: user.role,
                  xp: user.xp, currentStreak: user.currentStreak, longestStreak: user.longestStreak,
@@ -128,6 +164,214 @@ const getLeaderboard = async (req, res) => {
     }
 };
 
+// @desc    Forgot password - send reset token
+// @route   POST /api/users/forgot-password
+// @access  Public
+const forgotPassword = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ message: 'Please provide an email address' });
+        }
+
+        const user = await User.findOne({ email });
+        if (!user) {
+            // Don't reveal if email exists or not for security
+            return res.status(200).json({ message: 'If an account exists with this email, a reset link will be sent.' });
+        }
+
+        // Generate reset token (20 chars hex)
+        const resetToken = crypto.randomBytes(10).toString('hex');
+        
+        // Hash token and save to database with 30-minute expiry
+        user.resetPasswordToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+        user.resetPasswordExpire = new Date(Date.now() + 30 * 60 * 1000); // 30 minutes
+        await user.save();
+
+        // In production, send email with reset link
+        const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/forgot-password?token=${resetToken}&email=${email}`;
+
+        // Send password reset email
+        try {
+            await sendPasswordResetEmail(email, resetLink);
+        } catch (emailError) {
+            console.error('Email sending failed:', emailError);
+            // Still return success even if email fails
+        }
+
+        res.json({ 
+            message: 'If an account exists with this email, a password reset link will be sent.',
+            // For testing in development - remove in production
+            resetLink: process.env.NODE_ENV === 'development' ? resetLink : undefined
+        });
+    } catch (error) {
+        console.error('Forgot password error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Reset password with token
+// @route   POST /api/users/reset-password
+// @access  Public
+const resetPassword = async (req, res) => {
+    try {
+        const { token, email, newPassword } = req.body;
+
+        if (!token || !email || !newPassword) {
+            return res.status(400).json({ message: 'Missing required fields' });
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).json({ message: 'Password must be at least 6 characters' });
+        }
+
+        // Find user by email and check if token matches and hasn't expired
+        const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+        const user = await User.findOne({
+            email,
+            resetPasswordToken: hashedToken,
+            resetPasswordExpire: { $gt: new Date() },
+        });
+
+        if (!user) {
+            return res.status(400).json({ message: 'Invalid or expired reset token' });
+        }
+
+        // Update password and clear reset token
+        user.password = newPassword;
+        user.resetPasswordToken = null;
+        user.resetPasswordExpire = null;
+        await user.save();
+
+        res.json({
+            message: 'Password reset successful. You can now login with your new password.',
+        });
+    } catch (error) {
+        console.error('Reset password error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Verify email with token
+// @route   POST /api/users/verify-email
+// @access  Public
+const verifyEmail = async (req, res) => {
+    try {
+        const { token, email } = req.body;
+
+        if (!token || !email) {
+            return res.status(400).json({ message: 'Missing token or email' });
+        }
+
+        const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+        const user = await User.findOne({
+            email,
+            emailVerificationToken: hashedToken,
+            emailVerificationExpire: { $gt: new Date() },
+        });
+
+        if (!user) {
+            return res.status(400).json({ message: 'Invalid or expired verification token' });
+        }
+
+        // Mark email as verified
+        user.isEmailVerified = true;
+        user.emailVerificationToken = null;
+        user.emailVerificationExpire = null;
+        await user.save();
+
+        res.json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            xp: user.xp,
+            currentStreak: user.currentStreak,
+            longestStreak: user.longestStreak,
+            createdAt: user.createdAt,
+            clonedSets: user.clonedSets,
+            token: generateToken(user._id),
+            message: 'Email verified successfully! You can now login.',
+        });
+    } catch (error) {
+        console.error('Email verification error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Google OAuth callback
+// @route   POST /api/users/google-auth
+// @access  Public
+const googleAuth = async (req, res) => {
+    try {
+        const { googleId, name, email } = req.body;
+
+        if (!googleId || !email) {
+            return res.status(400).json({ message: 'Missing required fields from Google' });
+        }
+
+        let user = await User.findOne({ googleId });
+
+        if (user) {
+            // User exists, return token
+            return res.json({
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                xp: user.xp,
+                currentStreak: user.currentStreak,
+                longestStreak: user.longestStreak,
+                createdAt: user.createdAt,
+                clonedSets: user.clonedSets,
+                token: generateToken(user._id),
+            });
+        }
+
+        // Check if email exists (from another account)
+        const emailExists = await User.findOne({ email });
+        if (emailExists) {
+            return res.status(400).json({
+                message: 'Email already exists. Please login or use a different email.',
+            });
+        }
+
+        // Check if username is available
+        let username = name || email.split('@')[0];
+        let counter = 1;
+        let uniqueName = username;
+        while (await User.findOne({ name: uniqueName })) {
+            uniqueName = `${username}${counter}`;
+            counter++;
+        }
+
+        // Create new user with Google OAuth
+        user = await User.create({
+            name: uniqueName,
+            email,
+            googleId,
+            isEmailVerified: true, // Google emails are already verified
+        });
+
+        res.status(201).json({
+            _id: user._id,
+            name: user.name,
+            email: user.email,
+            role: user.role,
+            xp: user.xp,
+            currentStreak: user.currentStreak,
+            longestStreak: user.longestStreak,
+            createdAt: user.createdAt,
+            clonedSets: user.clonedSets,
+            token: generateToken(user._id),
+        });
+    } catch (error) {
+        console.error('Google Auth Error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
 
 module.exports = {
     registerUser,
@@ -135,4 +379,8 @@ module.exports = {
     getUserProfile,
     updateUserProfile,
     getLeaderboard,
+    forgotPassword,
+    resetPassword,
+    verifyEmail,
+    googleAuth,
 };

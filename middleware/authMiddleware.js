@@ -20,6 +20,11 @@ const protect = async (req, res, next) => {
                 return res.status(401).json({ message: 'Not authorized, user not found' });
             }
 
+            // Check if user is blocked
+            if (req.user.isBlocked) {
+                return res.status(403).json({ message: `Your account has been disabled: ${req.user.blockReason || 'Community policy violation'}` });
+            }
+
             next();
         } catch (error) {
             console.error(error);

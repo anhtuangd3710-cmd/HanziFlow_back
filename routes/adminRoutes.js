@@ -5,7 +5,9 @@ const {
     getStats,
     getAllUsers,
     adminDeleteUser,
-    exportUsers
+    exportUsers,
+    blockUser,
+    unblockUser
 } = require('../controllers/adminController');
 const { protect } = require('../middleware/authMiddleware');
 const { admin } = require('../middleware/adminMiddleware');
@@ -16,6 +18,8 @@ router.use(protect, admin);
 router.get('/stats', getStats);
 router.get('/users', getAllUsers);
 router.delete('/users/:id', adminDeleteUser);
+router.put('/users/:id/block', blockUser);
+router.put('/users/:id/unblock', unblockUser);
 router.get('/export/users', exportUsers);
 
 module.exports = router;

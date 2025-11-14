@@ -13,7 +13,7 @@ const myCache = new NodeCache({ stdTTL: 600 });
 // @access  Private
 const getSets = async (req, res) => {
     const page = parseInt(req.query.page, 10) || 1;
-    const limit = parseInt(req.query.limit, 10) || 6; // Default to 6 sets per page
+    const limit = parseInt(req.query.limit, 10) || 8; // Default to 6 sets per page
     const startIndex = (page - 1) * limit;
 
     try {

@@ -96,10 +96,98 @@ const exportUsers = async (req, res) => {
     }
 };
 
+// @desc    Block a user (disable account)
+// @route   PUT /api/admin/users/:id/block
+// @access  Admin
+const blockUser = async (req, res) => {
+    const userId = req.params.id;
+    const { reason } = req.body;
+
+    if (!reason || reason.trim().length === 0) {
+        return res.status(400).json({ message: 'Please provide a reason for blocking' });
+    }
+
+    // Prevent admin from blocking themselves
+    if (userId === req.user._id.toString()) {
+        return res.status(400).json({ message: 'You cannot block your own account.' });
+    }
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (user.isBlocked) {
+            return res.status(400).json({ message: 'User is already blocked' });
+        }
+
+        user.isBlocked = true;
+        user.blockReason = reason;
+        user.blockedAt = new Date();
+        user.blockedBy = req.user._id;
+        await user.save();
+
+        res.json({
+            message: `User ${user.name} has been blocked`,
+            user: {
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                isBlocked: user.isBlocked,
+                blockReason: user.blockReason,
+                blockedAt: user.blockedAt,
+            },
+        });
+    } catch (error) {
+        console.error('Block user error:', error);
+        res.status(500).json({ message: 'Failed to block user' });
+    }
+};
+
+// @desc    Unblock a user (restore account)
+// @route   PUT /api/admin/users/:id/unblock
+// @access  Admin
+const unblockUser = async (req, res) => {
+    const userId = req.params.id;
+
+    try {
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        if (!user.isBlocked) {
+            return res.status(400).json({ message: 'User is not blocked' });
+        }
+
+        user.isBlocked = false;
+        user.blockReason = null;
+        user.blockedAt = null;
+        user.blockedBy = null;
+        await user.save();
+
+        res.json({
+            message: `User ${user.name} has been unblocked`,
+            user: {
+                _id: user._id,
+                name: user.name,
+                email: user.email,
+                isBlocked: user.isBlocked,
+            },
+        });
+    } catch (error) {
+        console.error('Unblock user error:', error);
+        res.status(500).json({ message: 'Failed to unblock user' });
+    }
+};
+
 
 module.exports = {
     getStats,
     getAllUsers,
     adminDeleteUser,
     exportUsers,
+    blockUser,
+    unblockUser,
 };
