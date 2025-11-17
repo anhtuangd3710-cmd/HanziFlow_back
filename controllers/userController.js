@@ -373,6 +373,81 @@ const googleAuth = async (req, res) => {
 };
 
 
+// @desc    Save Gemini API Key
+// @route   PUT /api/users/api-key
+// @access  Private
+const saveApiKey = async (req, res) => {
+    try {
+        const { apiKey } = req.body;
+
+        if (!apiKey || !apiKey.trim()) {
+            return res.status(400).json({ message: 'API Key is required' });
+        }
+
+        const user = await User.findById(req.user._id);
+
+        if (user) {
+            user.geminiApiKey = apiKey.trim();
+            await user.save();
+
+            res.json({ 
+                message: 'API Key saved successfully',
+                hasApiKey: true 
+            });
+        } else {
+            res.status(404).json({ message: 'User not found' });
+        }
+    } catch (error) {
+        console.error('Save API Key Error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Get Gemini API Key
+// @route   GET /api/users/api-key
+// @access  Private
+const getApiKey = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+
+        if (user) {
+            res.json({ 
+                apiKey: user.geminiApiKey || null,
+                hasApiKey: !!user.geminiApiKey 
+            });
+        } else {
+            res.status(404).json({ message: 'User not found' });
+        }
+    } catch (error) {
+        console.error('Get API Key Error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
+// @desc    Delete Gemini API Key
+// @route   DELETE /api/users/api-key
+// @access  Private
+const deleteApiKey = async (req, res) => {
+    try {
+        const user = await User.findById(req.user._id);
+
+        if (user) {
+            user.geminiApiKey = null;
+            await user.save();
+
+            res.json({ 
+                message: 'API Key deleted successfully',
+                hasApiKey: false 
+            });
+        } else {
+            res.status(404).json({ message: 'User not found' });
+        }
+    } catch (error) {
+        console.error('Delete API Key Error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
 module.exports = {
     registerUser,
     loginUser,
@@ -383,4 +458,7 @@ module.exports = {
     resetPassword,
     verifyEmail,
     googleAuth,
+    saveApiKey,
+    getApiKey,
+    deleteApiKey,
 };

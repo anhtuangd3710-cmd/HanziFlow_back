@@ -11,6 +11,9 @@ const {
     resetPassword,
     verifyEmail,
     googleAuth,
+    saveApiKey,
+    getApiKey,
+    deleteApiKey,
 } = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
 
@@ -22,5 +25,9 @@ router.post('/forgot-password', forgotPassword);
 router.post('/reset-password', resetPassword);
 router.get('/leaderboard', protect, getLeaderboard);
 router.route('/profile').get(protect, getUserProfile).put(protect, updateUserProfile);
+router.route('/api-key')
+    .get(protect, getApiKey)
+    .put(protect, saveApiKey)
+    .delete(protect, deleteApiKey);
 
 module.exports = router;

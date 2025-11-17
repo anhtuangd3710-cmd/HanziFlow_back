@@ -35,6 +35,8 @@ const userSchema = mongoose.Schema({
     blockReason: { type: String, default: null },
     blockedAt: { type: Date, default: null },
     blockedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    // API Key fields
+    geminiApiKey: { type: String, default: null },
 }, {
     timestamps: true,
 });
