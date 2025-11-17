@@ -71,11 +71,15 @@ exports.uploadAudioFile = async (req, res) => {
   let uploadStream = null;
   
   try {
-    const { folderId, name, audioData, duration, size, mimeType } = req.body;
+    const { folderId, duration } = req.body;
     const userId = req.user.id;
 
-    if (!folderId || !name || !audioData) {
-      return res.status(400).json({ success: false, message: 'Missing required fields' });
+    if (!folderId) {
+      return res.status(400).json({ success: false, message: 'Folder ID is required' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'No audio file provided' });
     }
 
     // Verify folder exists and belongs to user
@@ -84,20 +88,11 @@ exports.uploadAudioFile = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Folder not found' });
     }
 
-    // Convert base64 to Buffer
-    let buffer;
-    try {
-      if (typeof audioData === 'string' && audioData.startsWith('data:')) {
-        const base64String = audioData.split(',')[1];
-        buffer = Buffer.from(base64String, 'base64');
-      } else if (typeof audioData === 'string') {
-        buffer = Buffer.from(audioData, 'base64');
-      } else {
-        buffer = audioData; // Already a buffer
-      }
-    } catch (error) {
-      return res.status(400).json({ success: false, message: 'Invalid audio data format: ' + error.message });
-    }
+    // Get file info from multer
+    const buffer = req.file.buffer;
+    const name = req.file.originalname;
+    const size = req.file.size;
+    const mimeType = req.file.mimetype;
 
     // Create upload promise wrapper
     const uploadPromise = new Promise((resolve, reject) => {

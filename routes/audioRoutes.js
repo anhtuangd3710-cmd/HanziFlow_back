@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const {
   createFolder,
   getFolders,
@@ -13,6 +14,12 @@ const {
 } = require('../controllers/audioController');
 const { protect } = require('../middleware/authMiddleware');
 
+// Configure multer for memory storage
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+});
+
 // All routes require authentication
 router.use(protect);
 
@@ -21,8 +28,8 @@ router.post('/folders', createFolder);
 router.get('/folders', getFolders);
 router.delete('/folders/:folderId', deleteFolder);
 
-// Audio file routes
-router.post('/files', uploadAudioFile);
+// Audio file routes - use multer for file upload
+router.post('/files', upload.single('audioFile'), uploadAudioFile);
 router.get('/files/:folderId', getAudioFiles);
 router.get('/file/:fileId', getAudioFile);
 router.get('/stream/:fileId', streamAudioFile);
