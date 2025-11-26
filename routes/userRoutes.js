@@ -14,11 +14,13 @@ const {
     saveApiKey,
     getApiKey,
     deleteApiKey,
+    resendVerificationEmail,
 } = require('../controllers/userController');
 const { protect } = require('../middleware/authMiddleware');
 
 router.post('/register', registerUser);
 router.post('/verify-email', verifyEmail);
+router.post('/resend-verification', resendVerificationEmail);
 router.post('/login', loginUser);
 router.post('/google-auth', googleAuth);
 router.post('/forgot-password', forgotPassword);

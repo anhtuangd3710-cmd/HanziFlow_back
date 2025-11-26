@@ -83,10 +83,20 @@ const loginUser = async (req, res) => {
                 });
             }
 
+            // Check if email is verified (skip for OAuth users)
+            if (!user.isEmailVerified && !user.googleId) {
+                return res.status(403).json({ 
+                    message: 'Please verify your email before logging in. Check your inbox for the verification link.',
+                    needsVerification: true,
+                    email: user.email
+                });
+            }
+
             res.json({
                  _id: user._id, name: user.name, email: user.email, role: user.role,
                  xp: user.xp, currentStreak: user.currentStreak, longestStreak: user.longestStreak,
                  lastStudiedDate: user.lastStudiedDate, createdAt: user.createdAt, clonedSets: user.clonedSets,
+                 isEmailVerified: user.isEmailVerified,
                  token: generateToken(user._id),
             });
         } else {
@@ -222,8 +232,21 @@ const resetPassword = async (req, res) => {
             return res.status(400).json({ message: 'Missing required fields' });
         }
 
-        if (newPassword.length < 6) {
-            return res.status(400).json({ message: 'Password must be at least 6 characters' });
+        // Password strength validation
+        if (newPassword.length < 8) {
+            return res.status(400).json({ message: 'Password must be at least 8 characters' });
+        }
+        if (!/(?=.*[a-z])/.test(newPassword)) {
+            return res.status(400).json({ message: 'Password must contain a lowercase letter' });
+        }
+        if (!/(?=.*[A-Z])/.test(newPassword)) {
+            return res.status(400).json({ message: 'Password must contain an uppercase letter' });
+        }
+        if (!/(?=.*\d)/.test(newPassword)) {
+            return res.status(400).json({ message: 'Password must contain a number' });
+        }
+        if (!/(?=.*[\W_])/.test(newPassword)) {
+            return res.status(400).json({ message: 'Password must contain a special character' });
         }
 
         // Find user by email and check if token matches and hasn't expired
@@ -311,10 +334,17 @@ const googleAuth = async (req, res) => {
             return res.status(400).json({ message: 'Missing required fields from Google' });
         }
 
+        // First, check if user with this googleId already exists
         let user = await User.findOne({ googleId });
 
         if (user) {
-            // User exists, return token
+            // Check if user is blocked
+            if (user.isBlocked) {
+                return res.status(403).json({ 
+                    message: `Your account has been disabled: ${user.blockReason || 'Community policy violation'}`
+                });
+            }
+            // User exists with this Google ID, return token
             return res.json({
                 _id: user._id,
                 name: user.name,
@@ -325,15 +355,46 @@ const googleAuth = async (req, res) => {
                 longestStreak: user.longestStreak,
                 createdAt: user.createdAt,
                 clonedSets: user.clonedSets,
+                isEmailVerified: user.isEmailVerified,
                 token: generateToken(user._id),
             });
         }
 
         // Check if email exists (from another account)
-        const emailExists = await User.findOne({ email });
-        if (emailExists) {
+        const existingUser = await User.findOne({ email });
+        if (existingUser) {
+            // Check if user is blocked
+            if (existingUser.isBlocked) {
+                return res.status(403).json({ 
+                    message: `Your account has been disabled: ${existingUser.blockReason || 'Community policy violation'}`
+                });
+            }
+            
+            // If user exists but doesn't have googleId, link the accounts
+            if (!existingUser.googleId) {
+                existingUser.googleId = googleId;
+                existingUser.isEmailVerified = true; // Mark as verified since Google verified
+                await existingUser.save();
+                
+                return res.json({
+                    _id: existingUser._id,
+                    name: existingUser.name,
+                    email: existingUser.email,
+                    role: existingUser.role,
+                    xp: existingUser.xp,
+                    currentStreak: existingUser.currentStreak,
+                    longestStreak: existingUser.longestStreak,
+                    createdAt: existingUser.createdAt,
+                    clonedSets: existingUser.clonedSets,
+                    isEmailVerified: existingUser.isEmailVerified,
+                    token: generateToken(existingUser._id),
+                    message: 'Google account linked successfully!',
+                });
+            }
+            
+            // Email exists with a different Google account
             return res.status(400).json({
-                message: 'Email already exists. Please login or use a different email.',
+                message: 'This email is already linked to another Google account.',
             });
         }
 
@@ -364,6 +425,7 @@ const googleAuth = async (req, res) => {
             longestStreak: user.longestStreak,
             createdAt: user.createdAt,
             clonedSets: user.clonedSets,
+            isEmailVerified: user.isEmailVerified,
             token: generateToken(user._id),
         });
     } catch (error) {
@@ -448,6 +510,55 @@ const deleteApiKey = async (req, res) => {
     }
 };
 
+// @desc    Resend verification email
+// @route   POST /api/users/resend-verification
+// @access  Public
+const resendVerificationEmail = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        if (!email) {
+            return res.status(400).json({ message: 'Please provide an email address' });
+        }
+
+        const user = await User.findOne({ email });
+        if (!user) {
+            // Don't reveal if email exists or not for security
+            return res.status(200).json({ message: 'If an account exists with this email, a verification link will be sent.' });
+        }
+
+        if (user.isEmailVerified) {
+            return res.status(400).json({ message: 'Email is already verified. Please login.' });
+        }
+
+        // Generate new verification token
+        const emailToken = crypto.randomBytes(10).toString('hex');
+        const emailTokenHash = crypto.createHash('sha256').update(emailToken).digest('hex');
+
+        user.emailVerificationToken = emailTokenHash;
+        user.emailVerificationExpire = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+        await user.save();
+
+        const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${emailToken}&email=${email}`;
+
+        // Send verification email
+        try {
+            await sendVerificationEmail(email, verificationLink);
+        } catch (emailError) {
+            console.error('Email sending failed:', emailError);
+        }
+
+        res.json({
+            message: 'Verification email sent! Please check your inbox.',
+            // For testing in development - remove in production
+            verificationLink: process.env.NODE_ENV === 'development' ? verificationLink : undefined,
+        });
+    } catch (error) {
+        console.error('Resend verification error:', error);
+        res.status(500).json({ message: 'Server Error' });
+    }
+};
+
 module.exports = {
     registerUser,
     loginUser,
@@ -461,4 +572,5 @@ module.exports = {
     saveApiKey,
     getApiKey,
     deleteApiKey,
+    resendVerificationEmail,
 };
